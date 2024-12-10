@@ -26,13 +26,12 @@ module top(
     input nickel,
     input dispense_btn,
     input test_btn,
-    //input [3:0] select,
+    input [15:0] bcd_in,
     output locked_led,
     output change,
-    //output [3:0] sseg_a_0,
-    //output [6:0] sseg_c_o,
+    output [3:0] sseg_a_0,
+    output [6:0] sseg_c_o,
     output dispense_led
-    //output TEST_BTN
     );
     
     wire DIME, NICKEL, DISPENSE_BTN, RST;
@@ -50,10 +49,9 @@ module top(
     .change(change),
     .dispense_led(dispense_led)
 );
+
+     top_multi_digit(clk, bcd_in, sseg_c_o, sseg_a_o);
     
-
-
-
 endmodule
 
 
@@ -185,5 +183,125 @@ module debouncing (RAW, CLK, CLEAN);
     end
 endmodule
 
+
+
+
+module top_multi_digit(clk, BCD_in, seg_cathode, seg_anode_o); //edit
+	input wire clk;
+	input wire [15:0] BCD_in;
+	output wire [6:0] seg_cathode;
+	output wire [3:0] seg_anode_o;
+	wire [3:0] mux_out, decoder_out;
+	assign seg_anode_o = ~decoder_out; 
+	
+	anode_gen UUT1(.clk(clk), .seg_anode(decoder_out));
+	Mux_4to1_case UUT2(.s(decoder_out), .i0(BCD_in[15:12]), .i1(BCD_in[11:8]), .i2(BCD_in[7:4]), .i3(BCD_in[3:0]), .o(mux_out));
+	BCD_7_seg_conv UUT3(.num(mux_out), .seg(seg_cathode));
+	//assign seg_anode = ~seg_anode;
+endmodule
+
+
+module anode_gen(clk, seg_anode);
+	input wire clk;
+	output wire [3:0] seg_anode;
+	wire [1:0] countToDecoder;
+	
+	
+	refresh_counter UUT1(.clk(clk), .o_q(countToDecoder));
+	shift_register UUT2(.count(countToDecoder), .mux(seg_anode));
+	
+endmodule
+
+
+module refresh_counter(clk, o_q); //edit, might work 100%
+	input wire clk;
+	output reg [1:0] o_q = 0;
+	reg [1:0] o_d = 0;
+	reg [8:0] count = 9'b000000000;
+	
+	always@(posedge clk)
+	begin
+	    count = count + 9'b000000001;
+		if(o_d == 2'b11 && count==9'b100000001) //&& count==32
+		begin
+			o_d = 2'b00;
+			o_q <= o_d;
+	    end
+		else
+		begin
+			if(count == 9'b100000001)
+			begin
+			o_d = o_d + 1'b1;
+			o_q <= o_d;
+			end
+		end
+		if(count == 9'b100000001)
+		//begin
+		  count = 9'b000000000;
+		//end
+	end
+endmodule
+
+
+module shift_register(count, mux); //edit might not work 100%
+	input wire [1:0] count;
+	output reg [3:0] mux;
+    
+	always@ (*)
+	begin
+		case (count)
+		  2'b00 : mux = 4'b1000;
+		  2'b01 : mux = 4'b0100;
+		  2'b10 : mux = 4'b0010;
+		  2'b11 : mux = 4'b0001;
+		  default : mux = 4'bxxxx;
+		endcase
+	end
+endmodule
+
+
+module Mux_4to1_case(s, i0, i1, i2, i3, o);
+	input wire [3:0] s, i0, i1, i2, i3;
+	output reg [3:0] o;
+	
+	always@(*) //means all inputs - s or i0 or i1 or i2 or i3
+	begin
+		case (s)
+			4'b1000 : o = i0;
+			4'b0100 : o = i1;
+			4'b0010 : o = i2;
+			4'b0001 : o = i3;
+			default : o = 1'bx; //default is undefined
+		endcase
+	end
+endmodule
+
+
+module BCD_7_seg_conv(num, seg);
+	input wire [3:0] num;
+	//output dp;
+	output reg [6:0] seg;
+	//output [7:0] anode:
+	
+	//assign anode = {{7{1'b1}},~valid};
+	//assign dp = 1'b1; //decimal point
+	always@(num) //means all inputs - s or i0 or i1 or i2 or i3
+	begin
+		case (num) //case statement
+			0 : seg = 7'b1000000; //0000001
+			1 : seg = 7'b1111001; //1001111
+			2 : seg = 7'b0100100; //0010010
+			3 : seg = 7'b0110000; //0000110
+			4 : seg = 7'b0011001; //1001100
+			5 : seg = 7'b0010010; //0100100
+			6 : seg = 7'b0000010; //0100000
+			7 : seg = 7'b1111000; //0001111
+			8 : seg = 7'b0000000; //0000000
+			9 : seg = 7'b0010000; //0000100
+			//switch off 7 segment character when the bcd digit is not a decimal number.
+			default : seg = 7'b1111111; 
+		endcase
+    end
+endmodule
 
 
